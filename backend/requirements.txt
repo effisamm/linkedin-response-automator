@@ -1,2 +1,13 @@
 fastapi
-anthropic
+uvicorn
+pydantic
+pydantic-settings
+python-dotenv
+chromadb
+sentence-transformers
+openai
+anthropic>=0.40.0
+async-lru
+pytest
+pytest-asyncio
+httpx

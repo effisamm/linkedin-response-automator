@@ -1,0 +1,135 @@
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    width: 320px;
+    margin: 0;
+    background-color: #f4f4f4;
+    color: #333;
+}
+
+.header {
+    background-color: #0A66C2;
+    color: white;
+    padding: 12px 16px;
+    text-align: center;
+}
+
+.header h1 {
+    font-size: 16px;
+    margin: 0;
+}
+
+.container {
+    padding: 16px;
+}
+
+.form-group {
+    margin-bottom: 16px;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 6px;
+}
+
+input[type="url"],
+input[type="password"],
+input[type="text"] {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-sizing: border-box;
+    transition: box-shadow 0.2s;
+}
+
+input:focus {
+    outline: none;
+    border-color: #0A66C2;
+    box-shadow: 0 0 0 2px rgba(10, 102, 194, 0.25);
+}
+
+.password-wrapper {
+    position: relative;
+    display: flex;
+}
+
+.toggle-vis {
+    position: absolute;
+    right: 1px;
+    top: 1px;
+    bottom: 1px;
+    border: none;
+    background: #f0f0f0;
+    color: #555;
+    padding: 0 10px;
+    border-radius: 0 4px 4px 0;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.error-message {
+    color: #A32D2D;
+    font-size: 12px;
+    margin: 4px 0 0;
+    min-height: 14px;
+}
+
+.form-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+}
+
+.btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 20px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-primary {
+    background-color: #0A66C2;
+    color: white;
+}
+
+.btn-primary:hover {
+    background-color: #004182;
+}
+
+.btn-secondary {
+    background-color: #eef3f8;
+    color: #0A66C2;
+    border: 1px solid #0A66C2;
+}
+
+.btn-secondary:hover {
+    background-color: #dbe9f6;
+}
+
+.status {
+    margin-top: 16px;
+    padding: 10px;
+    border-radius: 4px;
+    text-align: center;
+    display: none; /* Hidden by default */
+}
+
+.status--info {
+    background-color: #dbe9f6;
+    color: #004182;
+}
+
+.status--success {
+    background-color: #dff0d8;
+    color: #3c763d;
+}
+
+.status--error {
+    background-color: #f2dede;
+    color: #a94442;
+}

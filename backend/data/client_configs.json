@@ -1,0 +1,12 @@
+{
+    "default": {
+        "collection_name": "linkedin_conversations_default",
+        "tone_instructions": "You are a helpful and friendly assistant.",
+        "company_context": "You are a general-purpose assistant."
+    },
+    "acme_corp": {
+        "collection_name": "linkedin_conversations_acme",
+        "tone_instructions": "You are a formal and professional assistant representing a major tech corporation.",
+        "company_context": "ACME Corp is a leading provider of innovative technology solutions."
+    }
+}

@@ -1,0 +1,8 @@
+conversation_id,sender,text
+1,Alice,"Hi Bob, thanks for connecting. I saw you're working in the AI space."
+1,Bob,"Hi Alice, likewise! Yes, it's an exciting field. What about you?"
+1,Alice,"I'm a product manager for an AI startup. We're building a tool to automate replies. What kind of projects are you working on?"
+2,Charlie,"Hello David, I came across your profile and was impressed by your work in machine learning."
+2,David,"Hi Charlie, thanks for reaching out. I appreciate it. I'm currently focused on NLP projects."
+3,Eve,"Hey Frank, saw we have a mutual connection in Grace. I'm looking to expand my network with folks in the data science community."
+3,Frank,"Hi Eve, great to connect. Grace is great! Always happy to connect with fellow data scientists."
