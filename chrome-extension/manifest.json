@@ -3,7 +3,7 @@
   "name": "LinkedIn Reply Automator",
   "version": "1.0.0",
   "description": "AI-powered LinkedIn reply drafts using your team's messaging style",
-  "permissions": ["activeTab", "storage"],
+  "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": [
     "https://www.linkedin.com/*",
     "http://localhost:8000/*"

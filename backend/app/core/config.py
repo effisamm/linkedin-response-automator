@@ -10,17 +10,18 @@ class Settings(BaseSettings):
 
     # --- AI Service ---
     EMBEDDING_MODEL_NAME: str = Field("all-MiniLM-L6-v2", env="EMBEDDING_MODEL_NAME")
-    LLM_MODEL_NAME: str = "claude-3-5-sonnet-20240620"
+    LLM_MODEL_NAME: str = "claude-sonnet-4-20250514"
 
     # --- API Keys ---
-    ANTHROPIC_API_KEY: SecretStr
-    API_KEYS: Dict[str, str] = Field(default_factory=dict)
+    ANTHROPIC_API_KEY: SecretStr = Field(..., env="ANTHROPIC_API_KEY")
+    API_KEYS: Dict[str, str] = Field(default_factory=dict, env="API_KEYS")  # Expecting a JSON string in the environment variable
 
     # --- Data Paths ---
     BASE_DIR: Path = Path(__file__).parent.parent.parent
     DATA_PATH: Path = BASE_DIR / "data/conversations.json"
     CSV_DATA_PATH: Path = BASE_DIR / "data/sample_conversations.csv"
     CHROMADB_PATH: Path = BASE_DIR / "data/chroma_db"
+    CHROMADB_COLLECTION_NAME: str = Field("linkedin_conversations", env="CHROMADB_COLLECTION_NAME")
     CLIENT_CONFIG_PATH: Path = BASE_DIR / "data/client_configs.json"
 
     class Config:

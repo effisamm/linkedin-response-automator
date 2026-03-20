@@ -50,23 +50,8 @@ def initialize_resources():
         collections[client_id] = client.get_or_create_collection(name=collection_name)
         logger.info(f"ChromaDB collection for '{client_id}' ('{collection_name}') loaded with {collections[client_id].count()} documents.")
 
-    try:
-        anthropic_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY.get_secret_value())
-        # Perform a simple test call to validate the API key
-        asyncio.run(anthropic_client.messages.create(
-            model=settings.LLM_MODEL_NAME,
-            max_tokens=1,
-            messages=[{"role": "user", "content": "test"}]
-        ))
-        logger.info("Anthropic client initialized and API key validated.")
-    except anthropic.AuthenticationError as e:
-        logger.error("--- ANTHROPIC AUTHENTICATION FAILED ---")
-        logger.error("Could not authenticate with Anthropic. Please check your ANTHROPIC_API_KEY.")
-        logger.error(f"Underlying error: {e}")
-        raise SystemExit("Exiting due to Anthropic authentication failure.") from e
-    except Exception as e:
-        logger.error(f"An unexpected error occurred during Anthropic client initialization: {e}")
-        raise
+    anthropic_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY.get_secret_value())
+    logger.info("Anthropic client initialized successfully.")
 
 def close_resources():
     global executor

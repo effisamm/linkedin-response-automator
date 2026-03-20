@@ -46,8 +46,8 @@ def generate_icon(size, output_path):
 
 if __name__ == "__main__":
     # Generate the required icons
-    generate_icon(16, "extension/icons/icon16.png")
-    generate_icon(48, "extension/icons/icon48.png")
-    generate_icon(128, "extension/icons/icon128.png")
+    generate_icon(16, "chrome-extension/icons/icon16.png")
+    generate_icon(48, "chrome-extension/icons/icon48.png")
+    generate_icon(128, "chrome-extension/icons/icon128.png")
     
-    print("\nRunning the script from the project root should place icons in 'extension/icons/'.")
+    print("\nRunning the script from the project root should place icons in 'chrome-extension/icons/'.")
