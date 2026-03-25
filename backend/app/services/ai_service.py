@@ -69,10 +69,19 @@ async def ingest_feedback(payload: FeedbackPayload):
     collection = collections.get(client_id)
 
     if not collection or not executor:
-        print(f"Error: Resources not initialized for feedback ingestion for client '{client_id}'.")
+        logger.error(
+            "Resources not initialized for feedback ingestion",
+            extra={"client_id": client_id}
+        )
         return
 
-    print(f"Ingesting feedback for conversation {payload.conversation_id} for client '{client_id}'...")
+    logger.info(
+        "Ingesting feedback",
+        extra={
+            "client_id": client_id,
+            "conversation_id": payload.conversation_id
+        }
+    )
 
     context_text = " ".join([msg.text for msg in payload.conversation_context.messages])
     full_document = f"{context_text} {payload.final_sent_message}"
@@ -93,10 +102,19 @@ async def ingest_feedback(payload: FeedbackPayload):
         )
 
     await run_in_threadpool(db_upsert)
-    print(f"Feedback document {doc_id} upserted into collection for '{client_id}'.")
+    logger.info(
+        "Feedback document upserted",
+        extra={
+            "client_id": client_id,
+            "doc_id": doc_id
+        }
+    )
 
     find_similar_conversations.cache_clear()
-    print("Cleared find_similar_conversations cache.")
+    logger.debug(
+        "Cleared find_similar_conversations cache",
+        extra={"client_id": client_id}
+    )
 
 # --- Conversation Stage Detection ---
 @alru_cache(maxsize=128)
@@ -133,7 +151,11 @@ Return only the category name.
         return ConversationStage(stage_str)
 
     except (Exception, ValueError) as e:
-        print(f"Error detecting conversation stage: {e}")
+        logger.error(
+            "Error detecting conversation stage",
+            extra={"error": str(e)},
+            exc_info=True
+        )
         return ConversationStage.UNKNOWN
 
 # --- Async RAG Logic with Caching ---
@@ -157,16 +179,27 @@ async def find_similar_conversations(query_text: str, client_id: str, n_results:
     results = await run_in_threadpool(db_query)
     return results['documents'][0] if results and results['documents'] else []
 
-async def generate_reply(conversation: Conversation) -> str:
+async def generate_reply(conversation: Conversation, request_id: str = None) -> str:
     """
     Generates a reply using a RAG approach with the Claude API.
     """
     client_id = conversation.client_id or "default"
     client_config = client_configs.get(client_id, client_configs.get("default", {}))
+    num_examples = 3
 
     # 1. Get embeddings and context
     current_conversation_text = " ".join([msg.text for msg in conversation.messages])
-    similar_examples = await find_similar_conversations(current_conversation_text, client_id=client_id, n_results=3)
+    similar_examples = await find_similar_conversations(current_conversation_text, client_id=client_id, n_results=num_examples)
+
+    logger.info(
+        "Generating reply",
+        extra={
+            "client_id": client_id,
+            "stage": "retrieval_complete",
+            "request_id": request_id,
+            "num_examples": len(similar_examples)
+        }
+    )
 
     # 2. Construct prompt components
     examples_block = "\n---\n".join(similar_examples)
@@ -191,6 +224,16 @@ Write the rep's next reply to {last_sender}. Output only the message text."""
         if not anthropic_client:
             raise RuntimeError("Anthropic client not initialized.")
         
+        logger.info(
+            "Generating reply",
+            extra={
+                "client_id": client_id,
+                "stage": "api_call_start",
+                "request_id": request_id,
+                "num_examples": num_examples
+            }
+        )
+        
         message = await anthropic_client.messages.create(
             model=settings.LLM_MODEL_NAME,
             max_tokens=150,
@@ -205,8 +248,27 @@ Write the rep's next reply to {last_sender}. Output only the message text."""
         )
         
         reply = message.content[0].text if message.content else "Sorry, I couldn't generate a reply."
+        
+        logger.info(
+            "Generating reply",
+            extra={
+                "client_id": client_id,
+                "stage": "api_call_complete",
+                "request_id": request_id,
+                "num_examples": num_examples
+            }
+        )
+        
         return reply
 
     except Exception as e:
-        print(f"Error calling Anthropic API: {e}")
+        logger.error(
+            "Error calling Anthropic API",
+            extra={
+                "client_id": client_id,
+                "request_id": request_id,
+                "error": str(e)
+            },
+            exc_info=True
+        )
         raise

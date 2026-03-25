@@ -28,7 +28,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const generateBtn = document.getElementById('generateBtn');
     const replyContainer = document.getElementById('reply-container');
     const generatedReplyDiv = document.getElementById('generatedReply');
-    const insertBtn = document.getElementById('insertBtn');
     const copyBtn = document.getElementById('copyBtn');
 
     let statusTimeout;
@@ -229,26 +228,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
-     * Inserts the generated reply into the LinkedIn message box.
-     */
-    function insertReply() {
-        if (!currentReply) return;
-
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-            chrome.tabs.sendMessage(tabs[0].id, {
-                type: 'INSERT_REPLY',
-                reply: currentReply
-            }, (response) => {
-                if (response && response.success) {
-                    showStatus('Reply inserted into message box!', 'success');
-                } else {
-                    showStatus('Failed to insert reply. Make sure you\'re on a LinkedIn messaging page.', 'error');
-                }
-            });
-        });
-    }
-
-    /**
      * Copies the generated reply to clipboard.
      */
     function copyReply() {
@@ -266,7 +245,6 @@ document.addEventListener('DOMContentLoaded', () => {
     testBtn.addEventListener('click', testConnection);
     toggleKeyBtn.addEventListener('click', toggleKeyVisibility);
     generateBtn.addEventListener('click', generateReply);
-    insertBtn.addEventListener('click', insertReply);
     copyBtn.addEventListener('click', copyReply);
 
     // --- Initial Load ---

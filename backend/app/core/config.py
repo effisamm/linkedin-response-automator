@@ -7,6 +7,7 @@ import json
 class Settings(BaseSettings):
     # --- Application ---
     ENVIRONMENT: str = "development"
+    LOG_LEVEL: str = Field("INFO", env="LOG_LEVEL")
 
     # --- AI Service ---
     EMBEDDING_MODEL_NAME: str = Field("all-MiniLM-L6-v2", env="EMBEDDING_MODEL_NAME")

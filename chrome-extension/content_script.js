@@ -240,7 +240,7 @@ async function generateReply(messages) {
 
                 'Content-Type': 'application/json',
 
-                'X-Api-Key': config.apiKey,
+                'Authorization': `Bearer ${config.apiKey}`,
 
             },
 
@@ -377,16 +377,5 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.type === 'SCRAPE_CONVERSATION') {
         const messages = scrapeThread();
         sendResponse({ messages: messages });
-    } else if (request.type === 'INSERT_REPLY') {
-        const messageBox = document.querySelector('.msg-form__content-editable p');
-        if (messageBox) {
-            messageBox.textContent = request.reply;
-            // Dispatch input event for React to pick up the change
-            const inputEvent = new Event('input', { bubbles: true, cancelable: true });
-            messageBox.dispatchEvent(inputEvent);
-            sendResponse({ success: true });
-        } else {
-            sendResponse({ success: false });
-        }
     }
 });

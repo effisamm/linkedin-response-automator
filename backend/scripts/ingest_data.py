@@ -1,5 +1,6 @@
 import csv
 import json
+import logging
 import argparse
 import chromadb
 from sentence_transformers import SentenceTransformer
@@ -9,6 +10,11 @@ from pathlib import Path
 # Add the project root to the Python path to allow importing 'app'
 sys.path.append(str(Path(__file__).parent.parent))
 from app.core.config import settings
+from app.core.logging_config import setup_logging
+
+# Setup JSON logging
+setup_logging()
+logger = logging.getLogger(__name__)
 
 def process_csv_in_batches(csv_path: Path, batch_size: int = 100):
     # ... (implementation remains the same)
@@ -18,7 +24,7 @@ def ingest_data(client_id: str):
     """
     Main function to ingest data from CSV for a specific client.
     """
-    print(f"--- Starting Data Ingestion for client: {client_id} ---")
+    logger.info("Starting data ingestion", extra={"client_id": client_id})
 
     # 1. Load client configurations
     with open(settings.CLIENT_CONFIG_PATH, 'r') as f:
@@ -26,7 +32,7 @@ def ingest_data(client_id: str):
     
     client_config = client_configs.get(client_id)
     if not client_config:
-        print(f"Error: Client ID '{client_id}' not found in client_configs.json")
+        logger.error("Client ID not found", extra={"client_id": client_id})
         return
 
     collection_name = client_config['collection_name']
@@ -35,12 +41,24 @@ def ingest_data(client_id: str):
     settings.CHROMADB_PATH.mkdir(parents=True, exist_ok=True)
     client = chromadb.PersistentClient(path=str(settings.CHROMADB_PATH))
     collection = client.get_or_create_collection(name=collection_name)
-    print(f"Connected to ChromaDB. Collection: '{collection_name}'")
+    logger.info(
+        "Connected to ChromaDB",
+        extra={
+            "client_id": client_id,
+            "collection_name": collection_name
+        }
+    )
 
     # 3. Initialize the embedding model
-    print(f"Loading embedding model: '{settings.EMBEDDING_MODEL_NAME}'...")
+    logger.info(
+        "Loading embedding model",
+        extra={
+            "client_id": client_id,
+            "model_name": settings.EMBEDDING_MODEL_NAME
+        }
+    )
     model = SentenceTransformer(settings.EMBEDDING_MODEL_NAME)
-    print("Model loaded.")
+    logger.info("Embedding model loaded", extra={"client_id": client_id})
 
     # 4. Process CSV in batches
     batch_generator = process_csv_in_batches(settings.CSV_DATA_PATH)
@@ -48,7 +66,13 @@ def ingest_data(client_id: str):
     total_docs_added = 0
 
     for i, batch in enumerate(batch_generator):
-        print(f"Processing batch {i + 1}...")
+        logger.info(
+            "Processing batch",
+            extra={
+                "client_id": client_id,
+                "batch_number": i + 1
+            }
+        )
         documents = [" ".join([msg['text'] for msg in convo]) for convo in batch]
 
         if not documents:
@@ -58,7 +82,14 @@ def ingest_data(client_id: str):
         total_docs_processed += len(documents)
 
         existing_ids = set(collection.get(ids=ids)['ids'])
-        print(f"Found {len(existing_ids)} existing documents in this batch. Skipping them.")
+        logger.info(
+            "Found existing documents in batch",
+            extra={
+                "client_id": client_id,
+                "batch_number": i + 1,
+                "existing_count": len(existing_ids)
+            }
+        )
 
         new_docs_to_add = []
         new_ids_to_add = []
@@ -79,12 +110,24 @@ def ingest_data(client_id: str):
                 ids=new_ids_to_add
             )
             total_docs_added += len(new_docs_to_add)
-            print(f"Added {len(new_docs_to_add)} new documents in batch {i + 1}.")
+            logger.info(
+                "Added new documents in batch",
+                extra={
+                    "client_id": client_id,
+                    "batch_number": i + 1,
+                    "new_docs_count": len(new_docs_to_add)
+                }
+            )
         
-    print("\n--- Data Ingestion Complete ---")
-    print(f"Total documents processed: {total_docs_processed}")
-    print(f"Total new documents added: {total_docs_added}")
-    print(f"Collection '{collection_name}' now contains {collection.count()} documents.")
+    logger.info(
+        "Data ingestion complete",
+        extra={
+            "client_id": client_id,
+            "total_processed": total_docs_processed,
+            "total_added": total_docs_added,
+            "collection_count": collection.count()
+        }
+    )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ingest conversation data for a specific client.")
@@ -92,6 +135,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if not settings.CSV_DATA_PATH.exists():
-        print(f"Error: CSV data file not found at {settings.CSV_DATA_PATH}")
+        logger.error("CSV data file not found", extra={"csv_path": str(settings.CSV_DATA_PATH)})
     else:
         ingest_data(args.client_id)
