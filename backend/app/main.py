@@ -123,3 +123,20 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "ok"}
+
+@app.get("/clients")
+def get_clients():
+    """
+    Returns a list of available clients (public endpoint, no auth required).
+    """
+    from app.services.ai_service import client_configs
+    
+    if not client_configs:
+        return {"clients": []}
+    
+    clients = list(client_configs.keys())
+    logger.info(
+        "Clients retrieved",
+        extra={"available_clients": clients}
+    )
+    return {"clients": clients}
