@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # --- Data Paths ---
     BASE_DIR: Path = Path(__file__).parent.parent.parent
     DATA_PATH: Path = BASE_DIR / "data/conversations.json"
-    CSV_DATA_PATH: Path = BASE_DIR / "data/sample_conversations.csv"
+    CSV_DATA_PATH: Path = BASE_DIR / "data/linkedin_conversations.csv"
     CHROMADB_PATH: Path = BASE_DIR / "data/chroma_db"
     CHROMADB_COLLECTION_NAME: str = Field("linkedin_conversations", env="CHROMADB_COLLECTION_NAME")
     CLIENT_CONFIG_PATH: Path = BASE_DIR / "data/client_configs.json"

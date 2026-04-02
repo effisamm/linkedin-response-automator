@@ -17,8 +17,27 @@ setup_logging()
 logger = logging.getLogger(__name__)
 
 def process_csv_in_batches(csv_path: Path, batch_size: int = 100):
-    # ... (implementation remains the same)
-    pass
+    """
+    Generator that reads CSV and yields batches of conversations.
+    Groups messages by conversation_id.
+    """
+    conversations = {}
+    
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            conv_id = row['conversation_id']
+            if conv_id not in conversations:
+                conversations[conv_id] = []
+            conversations[conv_id].append({
+                'sender': row['sender'],
+                'text': row['text']
+            })
+    
+    # Yield conversations in batches
+    conv_list = list(conversations.values())
+    for i in range(0, len(conv_list), batch_size):
+        yield conv_list[i:i + batch_size]
 
 def ingest_data(client_id: str):
     """
