@@ -17,12 +17,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('config-form');
     const backendUrlInput = document.getElementById('backendUrl');
     const apiKeyInput = document.getElementById('apiKey');
+    const clientIdSelect = document.getElementById('clientId');
     const saveBtn = document.getElementById('saveBtn');
     const testBtn = document.getElementById('testBtn');
     const toggleKeyBtn = document.getElementById('toggleKey');
     const statusDiv = document.getElementById('status');
     const urlError = document.getElementById('url-error');
     const keyError = document.getElementById('key-error');
+    const clientError = document.getElementById('client-error');
     
     // Generate reply elements
     const generateBtn = document.getElementById('generateBtn');
@@ -52,16 +54,68 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * Loads available clients from the backend.
+     * Uses current form values so it works before saving.
+     */
+    async function loadClients() {
+        // Use form input values directly (works before saving)
+        const backendUrl = backendUrlInput.value.trim() || '';
+        const apiKey = apiKeyInput.value.trim() || '';
+
+        if (!backendUrl) {
+            clientIdSelect.innerHTML = '<option value="">Please enter backend URL</option>';
+            return;
+        }
+
+        const cleanUrl = backendUrl.endsWith('/') ? backendUrl.slice(0, -1) : backendUrl;
+
+        try {
+            const response = await fetch(`${cleanUrl}/clients`);
+
+            if (response.ok) {
+                const data = await response.json();
+                const clients = data.clients || [];
+
+                if (clients.length > 0) {
+                    clientIdSelect.innerHTML = clients
+                        .map(client => `<option value="${client}">${client}</option>`)
+                        .join('');
+
+                    // Restore saved selection if any
+                    chrome.storage.sync.get(['clientId'], (stored) => {
+                        if (stored.clientId) {
+                            clientIdSelect.value = stored.clientId;
+                        }
+                    });
+                } else {
+                    clientIdSelect.innerHTML = '<option value="default">default</option>';
+                }
+            } else {
+                clientIdSelect.innerHTML = '<option value="default">default</option>';
+            }
+        } catch (error) {
+            console.error('Error loading clients:', error);
+            clientIdSelect.innerHTML = '<option value="default">default</option>';
+        }
+    }
+
+    /**
      * Loads configuration from storage and populates the form.
      */
     function loadConfig() {
-        chrome.storage.sync.get(['backendUrl', 'apiKey'], (result) => {
+        chrome.storage.sync.get(['backendUrl', 'apiKey', 'clientId'], (result) => {
+            console.log('[loadConfig] Storage contents:', { backendUrl: result.backendUrl, hasApiKey: !!result.apiKey, clientId: result.clientId });
             if (result.backendUrl) {
                 backendUrlInput.value = result.backendUrl;
             }
             if (result.apiKey) {
                 apiKeyInput.value = result.apiKey;
             }
+            if (result.clientId) {
+                clientIdSelect.value = result.clientId;
+            }
+            // Load available clients
+            loadClients();
         });
     }
 
@@ -74,6 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let isValid = true;
         urlError.textContent = '';
         keyError.textContent = '';
+        clientError.textContent = '';
 
         // Validate URL
         let url;
@@ -93,12 +148,18 @@ document.addEventListener('DOMContentLoaded', () => {
             isValid = false;
         }
 
+        // Client ID is optional - will default to 'default' if not set
+        // Save whatever client is selected (or empty string if none)
+
         if (isValid) {
             chrome.storage.sync.set({
                 backendUrl: backendUrlInput.value,
-                apiKey: apiKeyInput.value
+                apiKey: apiKeyInput.value,
+                clientId: clientIdSelect.value || 'default'
             }, () => {
                 showStatus('Settings saved successfully!', 'success');
+                // Reload clients after saving in case new ones were added
+                loadClients();
             });
         }
     }
@@ -141,8 +202,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             // Get configuration
-            chrome.storage.sync.get(['backendUrl', 'apiKey'], async (result) => {
-                console.log('Config loaded:', { backendUrl: result.backendUrl, hasApiKey: !!result.apiKey });
+            chrome.storage.sync.get(['backendUrl', 'apiKey', 'clientId'], async (result) => {
+                const clientId = result.clientId || 'default';  // Default to 'default' if not set
+                console.log('Config loaded:', { backendUrl: result.backendUrl, hasApiKey: !!result.apiKey, clientId: clientId });
                 
                 if (!result.backendUrl || !result.apiKey) {
                     showStatus('Please configure settings first!', 'error');
@@ -194,7 +256,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 body: JSON.stringify({
                                     messages: response.messages,
                                     stage: 'initial_reply',
-                                    client_id: 'default'
+                                    client_id: clientId
                                 })
                             });
 
@@ -208,7 +270,27 @@ document.addEventListener('DOMContentLoaded', () => {
                             currentReply = data.reply;
                             generatedReplyDiv.textContent = currentReply;
                             replyContainer.style.display = 'block';
-                            showStatus('Reply generated successfully!', 'success');
+                            
+                            // Auto-insert the reply into the LinkedIn draft box
+                            chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+                                if (tabs[0]) {
+                                    chrome.tabs.sendMessage(tabs[0].id, { 
+                                        type: 'INSERT_REPLY',
+                                        reply: currentReply
+                                    }, (insertResponse) => {
+                                        if (chrome.runtime.lastError) {
+                                            console.warn('Could not auto-insert reply:', chrome.runtime.lastError);
+                                            showStatus('Reply generated! Copy to clipboard or use the Draft Reply button.', 'success');
+                                        } else if (insertResponse && insertResponse.success) {
+                                            showStatus('Reply generated and inserted into draft!', 'success');
+                                        } else {
+                                            showStatus('Reply generated! Copy to clipboard or use the Draft Reply button.', 'success');
+                                        }
+                                    });
+                                } else {
+                                    showStatus('Reply generated successfully! Copy to clipboard or use the Draft Reply button.', 'success');
+                                }
+                            });
                         } catch (error) {
                             console.error('Error:', error);
                             showStatus(`Error: ${error.message}`, 'error');
@@ -246,6 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleKeyBtn.addEventListener('click', toggleKeyVisibility);
     generateBtn.addEventListener('click', generateReply);
     copyBtn.addEventListener('click', copyReply);
+    backendUrlInput.addEventListener('blur', loadClients);
 
     // --- Initial Load ---
     loadConfig();

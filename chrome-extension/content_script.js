@@ -218,10 +218,12 @@ async function generateReply(messages) {
 
                 if (!response || !response.backendUrl || !response.apiKey) {
 
-                    return reject(new Error("Invalid config received from background script."));
+                    return reject(new Error("Invalid config received from background script. Please configure settings."));
 
                 }
 
+                // Default to 'default' client if not set
+                response.clientId = response.clientId || 'default';
                 resolve(response);
 
             });
@@ -244,7 +246,7 @@ async function generateReply(messages) {
 
             },
 
-            body: JSON.stringify({ messages: messages }),
+            body: JSON.stringify({ messages: messages, client_id: config.clientId }),
 
         });
 
@@ -363,13 +365,22 @@ function observeThread() {
  
 
 // --- Main Execution ---
+// Use polling to handle LinkedIn's SPA dynamic loading
+let injectionInterval = setInterval(() => {
+    const form = document.querySelector('.msg-form__content-editable');
+    const btnExists = document.getElementById('draft-reply-btn');
+    if (form && !btnExists) {
+        injectGenerateButton();
+    }
+    // Also try to start MutationObserver once container is available
+    if (document.querySelector('.msg-s-message-list-container')) {
+        observeThread();
+        clearInterval(injectionInterval);
+    }
+}, 1000);
 
-// Initial injection
-
+// Initial attempts
 injectGenerateButton();
-
-// Start observing for thread changes
-
 observeThread();
 
 // --- Message Listener for Popup ---
@@ -377,5 +388,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.type === 'SCRAPE_CONVERSATION') {
         const messages = scrapeThread();
         sendResponse({ messages: messages });
+    } else if (request.type === 'INSERT_REPLY') {
+        const messageBox = document.querySelector('.msg-form__content-editable p');
+        if (messageBox) {
+            messageBox.textContent = request.reply;
+            // Dispatch input event for React to pick up the change
+            const inputEvent = new Event('input', { bubbles: true, cancelable: true });
+            messageBox.dispatchEvent(inputEvent);
+            sendResponse({ success: true });
+        } else {
+            sendResponse({ success: false, error: 'Could not find draft box' });
+        }
     }
 });

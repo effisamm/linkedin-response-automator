@@ -112,7 +112,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
       isAsync = true;
 
-      chrome.storage.sync.get(["backendUrl", "apiKey"]).then(config => {
+      chrome.storage.sync.get(["backendUrl", "apiKey", "clientId"]).then(config => {
 
         sendResponse(config);
 
