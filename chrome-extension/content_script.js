@@ -329,7 +329,6 @@ async function generateReply(messages) {
                 if (!response || !response.backendUrl || !response.apiKey) {
                     return reject(new Error("Invalid config received from background script. Please configure settings."));
                 }
-                response.clientId = response.clientId || 'default';
                 resolve(response);
             });
         });
@@ -342,7 +341,7 @@ async function generateReply(messages) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${config.apiKey}`,
             },
-            body: JSON.stringify({ messages: messages, client_id: config.clientId }),
+            body: JSON.stringify({ messages: messages }),
         });
 
         if (!response.ok) {
