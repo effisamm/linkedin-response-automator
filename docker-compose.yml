@@ -1,0 +1,35 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      - CHROMADB_MODE=server
+      - CHROMADB_HOST=chromadb
+      - CHROMADB_PORT=8000
+    volumes:
+      - ./backend/data/client_configs.json:/app/data/client_configs.json
+    depends_on:
+      chromadb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:0.4.24
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./backend/data/chroma_db:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped

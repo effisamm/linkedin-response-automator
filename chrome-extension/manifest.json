@@ -6,7 +6,8 @@
   "permissions": ["activeTab", "storage", "scripting"],
   "host_permissions": [
     "https://www.linkedin.com/*",
-    "http://localhost:8000/*"
+    "http://localhost:8000/*",
+    "https://*/*"
   ],
   "background": {
     "service_worker": "background.js",

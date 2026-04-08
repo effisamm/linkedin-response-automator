@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     CHROMADB_PATH: Path = BASE_DIR / "data/chroma_db"
     CHROMADB_COLLECTION_NAME: str = Field("linkedin_conversations", env="CHROMADB_COLLECTION_NAME")
     CLIENT_CONFIG_PATH: Path = BASE_DIR / "data/client_configs.json"
+    CHROMADB_MODE: str = Field("embedded", env="CHROMADB_MODE")
+    CHROMADB_HOST: str = Field("localhost", env="CHROMADB_HOST")
+    CHROMADB_PORT: int = Field(8001, env="CHROMADB_PORT")
+
+    # --- Rate Limiting ---
+    RATE_LIMIT_PER_MINUTE: str = Field("20/minute", env="RATE_LIMIT_PER_MINUTE")
+    EMBEDDING_WORKERS: int = Field(4, env="EMBEDDING_WORKERS")
+    LLM_TIMEOUT_SECONDS: float = Field(30.0, env="LLM_TIMEOUT_SECONDS")
+    RAG_CACHE_SIZE: int = Field(512, env="RAG_CACHE_SIZE")
 
     class Config:
         env_file = ".env"

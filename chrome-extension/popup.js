@@ -200,7 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 method: 'POST',
                                 headers: {
                                     'Content-Type': 'application/json',
-                                    'X-API-Key': result.apiKey
+                                    'x-api-key': result.apiKey
                                 },
                                 body: JSON.stringify({
                                     messages: response.messages,

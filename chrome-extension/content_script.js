@@ -28,6 +28,53 @@ function getComposeBox() {
 }
 
 /**
+ * Fallback selectors for LinkedIn's Send button.
+ */
+const SEND_BUTTON_SELECTORS = [
+    '.msg-form__send-button',
+    'button[type="submit"].msg-form__send-btn',
+    'button.msg-form__send-button',
+    '[data-control-name="send"]'
+];
+
+/**
+ * Gets the LinkedIn Send button element using fallback selectors.
+ * @returns {Element|null}
+ */
+function getSendButton() {
+    for (const selector of SEND_BUTTON_SELECTORS) {
+        const element = document.querySelector(selector);
+        if (element) {
+            return element;
+        }
+    }
+    return null;
+}
+
+/**
+ * Fire-and-forget POST to /feedback so the backend can learn from the final sent message.
+ * Never blocks the user — errors are logged silently.
+ */
+function postFeedback(config, originalDraft, finalSentMessage, conversationMessages) {
+    fetch(`${config.backendUrl}/feedback`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': config.apiKey
+        },
+        body: JSON.stringify({
+            conversation_id: crypto.randomUUID(),
+            original_draft: originalDraft,
+            final_sent_message: finalSentMessage,
+            was_edited: originalDraft !== finalSentMessage,
+            conversation_context: { messages: conversationMessages }
+        })
+    }).catch(err => {
+        console.warn('[LinkedIn Reply Automator] Feedback POST failed (non-blocking):', err.message);
+    });
+}
+
+/**
 
 * Scrapes the current LinkedIn message thread for all messages.
 
@@ -204,10 +251,14 @@ function injectGenerateButton() {
 /**
  * Injects text into the LinkedIn message box using execCommand so React's
  * synthetic events fire and the Send button becomes active.
- * @param {string} text
- * @returns {boolean} true if the box was found, false otherwise.
+ * Optionally attaches a one-time Send button listener to POST feedback after the user sends.
+ * @param {string} text - The reply text to inject.
+ * @param {string|null} originalDraft - The text originally returned by the backend.
+ * @param {Array|null} conversationMessages - The scraped conversation messages.
+ * @param {object|null} config - The extension config (backendUrl, apiKey).
+ * @returns {boolean} true if the box was found and text injected, false otherwise.
  */
-function injectTextIntoBox(text) {
+function injectTextIntoBox(text, originalDraft = null, conversationMessages = null, config = null) {
     const contentEditable = getComposeBox();
     if (!contentEditable) {
         console.warn('[LinkedIn Reply Automator] Could not find compose box to inject text');
@@ -243,6 +294,25 @@ function injectTextIntoBox(text) {
         contentEditable.dispatchEvent(changeEvent);
         
         console.log('[LinkedIn Reply Automator] Text injected successfully');
+
+        // Attach a one-time click listener to the Send button to capture the final
+        // sent message (which may differ if the user edited the draft) and POST it
+        // back to the backend so the RAG store learns from the user's actual style.
+        if (originalDraft !== null && conversationMessages !== null && config !== null) {
+            const sendBtn = getSendButton();
+            if (sendBtn) {
+                sendBtn.addEventListener('click', () => {
+                    // Read text from compose box before LinkedIn clears it
+                    const composeBox = getComposeBox();
+                    const finalSentMessage = composeBox ? composeBox.textContent.trim() : text;
+                    postFeedback(config, originalDraft, finalSentMessage, conversationMessages);
+                }, { once: true }); // { once: true } auto-removes the listener after first fire
+                console.log('[LinkedIn Reply Automator] Send button listener attached for feedback');
+            } else {
+                console.warn('[LinkedIn Reply Automator] Send button not found, feedback will not be captured for this reply');
+            }
+        }
+
         return true;
     } catch (error) {
         console.error('[LinkedIn Reply Automator] Error injecting text:', error);
@@ -339,7 +409,7 @@ async function generateReply(messages) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${config.apiKey}`,
+                'x-api-key': config.apiKey,
             },
             body: JSON.stringify({ messages: messages }),
         });
@@ -352,9 +422,9 @@ async function generateReply(messages) {
         const data = await response.json();
         const reply = data.reply;
 
-        // 3. Inject reply into the compose box
+        // 3. Inject reply into the compose box and arm the Send button feedback listener
         console.log('[LinkedIn Reply Automator] Injecting reply...');
-        const injected = injectTextIntoBox(reply);
+        const injected = injectTextIntoBox(reply, reply, messages, config);
 
         if (injected) {
             // Show success message

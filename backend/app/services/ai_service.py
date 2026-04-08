@@ -21,11 +21,16 @@ collections: Dict[str, Collection] = {}
 executor: ProcessPoolExecutor | None = None
 anthropic_client: anthropic.AsyncAnthropic | None = None
 client_configs: Dict[str, Dict] = {}
+_process_local_model: SentenceTransformer | None = None
+
+# --- Worker Initializer ---
+def _worker_initializer(model_name: str) -> None:
+    global _process_local_model
+    _process_local_model = SentenceTransformer(model_name)
 
 # --- CPU-Bound Task ---
-def encode_text_task(text: str, model_name: str) -> list[list[float]]:
-    process_local_model = SentenceTransformer(model_name)
-    return process_local_model.encode([text]).tolist()
+def encode_text_task(text: str) -> list[list[float]]:
+    return _process_local_model.encode([text]).tolist()
 
 # --- Lifespan Functions ---
 def initialize_resources():
@@ -35,15 +40,26 @@ def initialize_resources():
     logger.info(f"Using LLM: {settings.LLM_MODEL_NAME}")
     logger.info(f"Using Embedding Model: {settings.EMBEDDING_MODEL_NAME}")
     
-    executor = ProcessPoolExecutor()
+    executor = ProcessPoolExecutor(
+        max_workers=settings.EMBEDDING_WORKERS,
+        initializer=_worker_initializer,
+        initargs=(settings.EMBEDDING_MODEL_NAME,)
+    )
+    logger.info(f"ProcessPoolExecutor started with {settings.EMBEDDING_WORKERS} workers")
     
     with open(settings.CLIENT_CONFIG_PATH, 'r') as f:
         client_configs = json.load(f)
     
     # Ensure the ChromaDB directory exists
-    settings.CHROMADB_PATH.mkdir(parents=True, exist_ok=True)
-    
-    client: Client = chromadb.PersistentClient(path=str(settings.CHROMADB_PATH))
+    if settings.CHROMADB_MODE == "server":
+        client: Client = chromadb.HttpClient(
+            host=settings.CHROMADB_HOST,
+            port=settings.CHROMADB_PORT
+        )
+    else:
+        settings.CHROMADB_PATH.mkdir(parents=True, exist_ok=True)
+        client: Client = chromadb.PersistentClient(path=str(settings.CHROMADB_PATH))
+    logger.info(f"ChromaDB mode: {settings.CHROMADB_MODE}")
     
     for client_id, config in client_configs.items():
         collection_name = config['collection_name']
@@ -88,7 +104,7 @@ async def ingest_feedback(payload: FeedbackPayload):
 
     loop = asyncio.get_running_loop()
     embedding = await loop.run_in_executor(
-        executor, encode_text_task, full_document, settings.EMBEDDING_MODEL_NAME
+        executor, encode_text_task, full_document
     )
 
     doc_id = f"feedback_{payload.conversation_id}"
@@ -110,7 +126,8 @@ async def ingest_feedback(payload: FeedbackPayload):
         }
     )
 
-    find_similar_conversations.cache_clear()
+    if hasattr(find_similar_conversations, '_cached_impl'):
+        find_similar_conversations._cached_impl.cache_clear()
     logger.debug(
         "Cleared find_similar_conversations cache",
         extra={"client_id": client_id}
@@ -159,8 +176,7 @@ Return only the category name.
         return ConversationStage.UNKNOWN
 
 # --- Async RAG Logic with Caching ---
-@alru_cache(maxsize=128)
-async def find_similar_conversations(query_text: str, client_id: str, n_results: int = 3) -> list[str]:
+async def _find_similar_conversations_impl(query_text: str, client_id: str, n_results: int = 3) -> list[str]:
     global collections, executor
     collection = collections.get(client_id)
     if not collection or not executor:
@@ -168,7 +184,7 @@ async def find_similar_conversations(query_text: str, client_id: str, n_results:
 
     loop = asyncio.get_running_loop()
     query_embedding = await loop.run_in_executor(
-        executor, encode_text_task, query_text, settings.EMBEDDING_MODEL_NAME
+        executor, encode_text_task, query_text
     )
 
     def db_query():
@@ -178,6 +194,15 @@ async def find_similar_conversations(query_text: str, client_id: str, n_results:
         )
     results = await run_in_threadpool(db_query)
     return results['documents'][0] if results and results['documents'] else []
+
+async def find_similar_conversations(query_text: str, client_id: str, n_results: int = 3) -> list[str]:
+    if not hasattr(find_similar_conversations, '_cached_impl'):
+        from async_lru import alru_cache as _alru_cache
+        @_alru_cache(maxsize=settings.RAG_CACHE_SIZE)
+        async def _impl(query_text: str, client_id: str, n_results: int = 3) -> list[str]:
+            return await _find_similar_conversations_impl(query_text, client_id, n_results)
+        find_similar_conversations._cached_impl = _impl
+    return await find_similar_conversations._cached_impl(query_text, client_id, n_results)
 
 async def generate_reply(conversation: Conversation, request_id: str = None) -> str:
     """
@@ -234,17 +259,20 @@ Write the rep's next reply to {last_sender}. Output only the message text."""
             }
         )
         
-        message = await anthropic_client.messages.create(
-            model=settings.LLM_MODEL_NAME,
-            max_tokens=150,
-            temperature=0.4,
-            system=system_prompt,
-            messages=[
-                {
-                    "role": "user",
-                    "content": user_prompt
-                }
-            ]
+        message = await asyncio.wait_for(
+            anthropic_client.messages.create(
+                model=settings.LLM_MODEL_NAME,
+                max_tokens=150,
+                temperature=0.4,
+                system=system_prompt,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": user_prompt
+                    }
+                ]
+            ),
+            timeout=settings.LLM_TIMEOUT_SECONDS
         )
         
         reply = message.content[0].text if message.content else "Sorry, I couldn't generate a reply."

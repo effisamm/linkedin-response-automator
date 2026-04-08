@@ -57,8 +57,18 @@ def ingest_data(client_id: str):
     collection_name = client_config['collection_name']
 
     # 2. Initialize ChromaDB client and collection
-    settings.CHROMADB_PATH.mkdir(parents=True, exist_ok=True)
-    client = chromadb.PersistentClient(path=str(settings.CHROMADB_PATH))
+    if settings.CHROMADB_MODE == "server":
+        client = chromadb.HttpClient(
+            host=settings.CHROMADB_HOST,
+            port=settings.CHROMADB_PORT
+        )
+    else:
+        settings.CHROMADB_PATH.mkdir(parents=True, exist_ok=True)
+        client = chromadb.PersistentClient(path=str(settings.CHROMADB_PATH))
+    logger.info(
+        "ChromaDB mode for ingestion",
+        extra={"mode": settings.CHROMADB_MODE}
+    )
     collection = client.get_or_create_collection(name=collection_name)
     logger.info(
         "Connected to ChromaDB",

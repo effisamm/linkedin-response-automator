@@ -5,6 +5,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
 from app.core.logging_config import setup_logging
@@ -44,20 +48,28 @@ async def lifespan(app: FastAPI):
     close_resources()
 
 app = FastAPI(lifespan=lifespan)
+
+limiter = Limiter(
+    key_func=lambda request: request.headers.get("x-api-key", get_remote_address(request))
+)
+app.state.limiter = limiter
+app.add_middleware(SlowAPIMiddleware)
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(RequestIDMiddleware)
 
 @app.post("/generate-reply")
+@limiter.limit(settings.RATE_LIMIT_PER_MINUTE)
 async def get_reply(
+    request: Request,
     conversation: Conversation,
     client_id: str = Depends(get_current_client_id),
-    request: Request = None
 ):
     if not conversation.messages:
         raise HTTPException(status_code=400, detail="Conversation history cannot be empty.")
 
     # Assign the client_id from the token to the conversation
     conversation.client_id = client_id
-    request_id = getattr(request.state, 'request_id', None) if request else None
+    request_id = getattr(request.state, 'request_id', None)
 
     try:
         reply = await generate_reply(conversation, request_id=request_id)
