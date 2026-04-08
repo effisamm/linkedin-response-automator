@@ -1,4 +1,33 @@
 /**
+ * Fallback selectors for LinkedIn compose box.
+ * LinkedIn uses different selectors depending on the page context.
+ * If the primary selector fails, try each fallback in order.
+ */
+const COMPOSE_BOX_SELECTORS = [
+    '.msg-form__content-editable',           // Primary: LinkedIn messaging
+    '[data-placeholder="Write a message..."]', // Fallback 1: Alternative messaging
+    '[contenteditable="true"][role="textbox"]', // Fallback 2: Any contenteditable textbox
+    '.ql-editor'                            // Fallback 3: Quill editor (used in some contexts)
+];
+
+/**
+ * Gets the LinkedIn compose box element using fallback selectors.
+ * Tries each selector in order and returns the first match.
+ * @returns {Element|null} The compose box element or null if not found.
+ */
+function getComposeBox() {
+    for (const selector of COMPOSE_BOX_SELECTORS) {
+        const element = document.querySelector(selector);
+        if (element) {
+            console.log('[LinkedIn Reply Automator] Found compose box with selector:', selector);
+            return element;
+        }
+    }
+    console.warn('[LinkedIn Reply Automator] Compose box not found with any selector');
+    return null;
+}
+
+/**
 
 * Scrapes the current LinkedIn message thread for all messages.
 
@@ -173,8 +202,59 @@ function injectGenerateButton() {
  
 
 /**
+ * Injects text into the LinkedIn message box using execCommand so React's
+ * synthetic events fire and the Send button becomes active.
+ * @param {string} text
+ * @returns {boolean} true if the box was found, false otherwise.
+ */
+function injectTextIntoBox(text) {
+    const contentEditable = getComposeBox();
+    if (!contentEditable) {
+        console.warn('[LinkedIn Reply Automator] Could not find compose box to inject text');
+        return false;
+    }
+    
+    try {
+        // Focus the compose box
+        contentEditable.focus();
+        
+        // Select all existing content
+        document.execCommand('selectAll', false, null);
+        
+        // Delete existing content
+        document.execCommand('delete', false, null);
+        
+        // Insert the new text
+        document.execCommand('insertText', false, text);
+        
+        // Dispatch InputEvent for React to pick up the change
+        const inputEvent = new InputEvent('input', {
+            bubbles: true,
+            cancelable: true,
+            view: window
+        });
+        contentEditable.dispatchEvent(inputEvent);
+        
+        // Dispatch change event as well
+        const changeEvent = new Event('change', {
+            bubbles: true,
+            cancelable: true
+        });
+        contentEditable.dispatchEvent(changeEvent);
+        
+        console.log('[LinkedIn Reply Automator] Text injected successfully');
+        return true;
+    } catch (error) {
+        console.error('[LinkedIn Reply Automator] Error injecting text:', error);
+        return false;
+    }
+}
 
-* Fetches config, calls the backend to generate a reply, and injects it.
+/**
+
+* Fetches config, calls the backend to generate a reply, and injects it into the compose box.
+
+* Shows loading state, confirmation message on success, and error message on failure.
 
 * @param {Array<{sender: string, text: string}>} messages The conversation history.
 
@@ -184,127 +264,132 @@ async function generateReply(messages) {
 
     const button = document.getElementById('draft-reply-btn');
 
-    const errorDisplay = document.getElementById('draft-reply-error') || document.createElement('div');
+    if (!button) {
+        console.error('[LinkedIn Reply Automator] Draft Reply button not found');
+        return;
+    }
 
-    errorDisplay.id = 'draft-reply-error';
+    // Create or get error display element
+    let errorDisplay = document.getElementById('draft-reply-error');
+    if (!errorDisplay) {
+        errorDisplay = document.createElement('div');
+        errorDisplay.id = 'draft-reply-error';
+        errorDisplay.style.cssText = `
+            position: absolute;
+            bottom: 45px;
+            right: 10px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            max-width: 250px;
+            z-index: 99;
+        `;
+        button.parentElement.appendChild(errorDisplay);
+    }
 
-    errorDisplay.style.cssText = 'position: absolute; bottom: 45px; right: 10px; color: red; font-size: 12px;';
-
-    button.parentElement.appendChild(errorDisplay);
-
- 
+    // Create or get success display element
+    let successDisplay = document.getElementById('draft-reply-success');
+    if (!successDisplay) {
+        successDisplay = document.createElement('div');
+        successDisplay.id = 'draft-reply-success';
+        successDisplay.style.cssText = `
+            position: absolute;
+            bottom: 45px;
+            right: 10px;
+            padding: 8px 12px;
+            border-radius: 4px;
+            background-color: #0a66c2;
+            color: white;
+            font-size: 12px;
+            max-width: 250px;
+            z-index: 99;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        `;
+        button.parentElement.appendChild(successDisplay);
+    }
 
     try {
-
-        button.textContent = '✦ Drafting...';
-
+        // Set loading state
+        button.textContent = '⏳ Drafting...';
         button.disabled = true;
-
         errorDisplay.textContent = '';
+        errorDisplay.style.display = 'none';
+        successDisplay.textContent = '';
+        successDisplay.style.display = 'none';
 
- 
+        console.log('[LinkedIn Reply Automator] Starting reply generation...');
 
         // 1. Get config from the background service worker
-
         const config = await new Promise((resolve, reject) => {
-
             chrome.runtime.sendMessage({ type: "GET_CONFIG" }, response => {
-
                 if (chrome.runtime.lastError) {
-
                     return reject(new Error(chrome.runtime.lastError.message));
-
                 }
-
                 if (!response || !response.backendUrl || !response.apiKey) {
-
                     return reject(new Error("Invalid config received from background script. Please configure settings."));
-
                 }
-
-                // Default to 'default' client if not set
                 response.clientId = response.clientId || 'default';
                 resolve(response);
-
             });
-
         });
-
- 
 
         // 2. POST to the backend
-
+        console.log('[LinkedIn Reply Automator] Calling backend:', `${config.backendUrl}/generate-reply`);
         const response = await fetch(`${config.backendUrl}/generate-reply`, {
-
             method: 'POST',
-
             headers: {
-
                 'Content-Type': 'application/json',
-
                 'Authorization': `Bearer ${config.apiKey}`,
-
             },
-
             body: JSON.stringify({ messages: messages, client_id: config.clientId }),
-
         });
 
- 
-
         if (!response.ok) {
-
             const errorData = await response.json();
-
             throw new Error(errorData.detail || `HTTP error! Status: ${response.status}`);
-
         }
-
- 
 
         const data = await response.json();
-
         const reply = data.reply;
 
- 
+        // 3. Inject reply into the compose box
+        console.log('[LinkedIn Reply Automator] Injecting reply...');
+        const injected = injectTextIntoBox(reply);
 
-        // 3. On success, set the text content and dispatch an event
+        if (injected) {
+            // Show success message
+            successDisplay.textContent = '✓ Reply inserted into compose box';
+            successDisplay.style.display = 'block';
+            successDisplay.style.opacity = '1';
 
-        const messageBox = document.querySelector('.msg-form__content-editable p');
-
-        if (messageBox) {
-
-            messageBox.textContent = reply;
-
-            // Dispatch input event for React to pick up the change
-
-            const inputEvent = new Event('input', { bubbles: true, cancelable: true });
-
-            messageBox.dispatchEvent(inputEvent);
-
+            // Auto-dismiss success message after 3 seconds
+            setTimeout(() => {
+                successDisplay.style.opacity = '0';
+                setTimeout(() => {
+                    successDisplay.style.display = 'none';
+                }, 300);
+            }, 3000);
+            
+            console.log('[LinkedIn Reply Automator] Reply successfully generated and inserted');
+        } else {
+            throw new Error('Failed to inject text into compose box');
         }
 
- 
-
     } catch (error) {
-
-        // 4. On error, show an inline error message
-
-        console.error("Error generating reply:", error);
-
+        // Show error message
+        console.error('[LinkedIn Reply Automator] Error generating reply:', error);
         errorDisplay.textContent = `Error: ${error.message}`;
-
+        errorDisplay.style.color = 'white';
+        errorDisplay.style.backgroundColor = '#d32f2f';
+        errorDisplay.style.display = 'block';
     } finally {
-
+        // Restore button state
         button.textContent = '✦ Draft Reply';
-
         button.disabled = false;
-
     }
 
 }
-
- 
 
 /**
 
@@ -314,7 +399,7 @@ async function generateReply(messages) {
 
 function observeThread() {
 
-    const targetNode = document.querySelector('.msg-s-message-list-container');
+    const targetNode = document.querySelector('.msg-s-message-list-container'); // This selector is for the thread container, not the compose box
 
     if (!targetNode) {
 
@@ -365,39 +450,68 @@ function observeThread() {
  
 
 // --- Main Execution ---
+console.log('[LinkedIn Reply Automator] Content script loaded');
+
 // Use polling to handle LinkedIn's SPA dynamic loading
+let observerStarted = false;
 let injectionInterval = setInterval(() => {
-    const form = document.querySelector('.msg-form__content-editable');
-    const btnExists = document.getElementById('draft-reply-btn');
-    if (form && !btnExists) {
-        injectGenerateButton();
-    }
-    // Also try to start MutationObserver once container is available
-    if (document.querySelector('.msg-s-message-list-container')) {
-        observeThread();
-        clearInterval(injectionInterval);
+    try {
+        const form = getComposeBox();
+        const btnExists = document.getElementById('draft-reply-btn');
+        if (form && !btnExists) {
+            injectGenerateButton();
+        }
+        // Also try to start MutationObserver once container is available (only once)
+        if (!observerStarted && document.querySelector('.msg-s-message-list-container')) {
+            observeThread();
+            observerStarted = true;
+            clearInterval(injectionInterval);
+            console.log('[LinkedIn Reply Automator] MutationObserver started, polling stopped');
+        }
+    } catch (error) {
+        console.error('[LinkedIn Reply Automator] Error in injection interval:', error);
     }
 }, 1000);
 
 // Initial attempts
-injectGenerateButton();
-observeThread();
+try {
+    const composeBox = getComposeBox();
+    if (composeBox) {
+        injectGenerateButton();
+    } else {
+        console.log('[LinkedIn Reply Automator] Compose box not ready on initial attempt, will retry via polling');
+    }
+} catch (error) {
+    console.log('[LinkedIn Reply Automator] Initial button injection failed (may retry):', error.message);
+}
+
+try {
+    if (!observerStarted) {
+        observeThread();
+        observerStarted = true;
+    }
+} catch (error) {
+    console.log('[LinkedIn Reply Automator] Initial observer setup failed (will retry):', error.message);
+}
 
 // --- Message Listener for Popup ---
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.type === 'SCRAPE_CONVERSATION') {
-        const messages = scrapeThread();
-        sendResponse({ messages: messages });
-    } else if (request.type === 'INSERT_REPLY') {
-        const messageBox = document.querySelector('.msg-form__content-editable p');
-        if (messageBox) {
-            messageBox.textContent = request.reply;
-            // Dispatch input event for React to pick up the change
-            const inputEvent = new Event('input', { bubbles: true, cancelable: true });
-            messageBox.dispatchEvent(inputEvent);
-            sendResponse({ success: true });
-        } else {
-            sendResponse({ success: false, error: 'Could not find draft box' });
+    console.log('Content script received message:', request.type);
+    try {
+        if (request.type === 'SCRAPE_CONVERSATION') {
+            console.log('Attempting to scrape thread...');
+            const messages = scrapeThread();
+            console.log('Scraped messages:', messages.length);
+            sendResponse({ messages: messages || [] });
+            return true; // Keep channel open for sendResponse
+        } else if (request.type === 'INSERT_REPLY') {
+            const success = injectTextIntoBox(request.reply);
+            sendResponse({ success, error: success ? null : 'Could not find the LinkedIn message box' });
+            return true; // Keep channel open for sendResponse
         }
+    } catch (error) {
+        console.error('Error in message listener:', error);
+        sendResponse({ error: error.message, messages: [] });
+        return true; // Keep channel open for sendResponse
     }
 });

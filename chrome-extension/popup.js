@@ -30,7 +30,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const generateBtn = document.getElementById('generateBtn');
     const replyContainer = document.getElementById('reply-container');
     const generatedReplyDiv = document.getElementById('generatedReply');
-    const copyBtn = document.getElementById('copyBtn');
 
     let statusTimeout;
     let currentReply = null;
@@ -228,15 +227,26 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.log('Scrape response:', response);
                         
                         if (chrome.runtime.lastError) {
-                            console.error('Chrome error:', chrome.runtime.lastError);
-                            showStatus('Failed to access LinkedIn page. Make sure you\'re on linkedin.com/messaging', 'error');
+                            const errorMsg = chrome.runtime.lastError.message || 'Unknown error';
+                            console.error('Chrome error:', errorMsg);
+                            console.error('Full error object:', chrome.runtime.lastError);
+                            showStatus(`Failed to access LinkedIn. Error: ${errorMsg}. Make sure you're on linkedin.com/messaging`, 'error');
+                            generateBtn.disabled = false;
+                            generateBtn.textContent = 'Generate AI Reply';
+                            return;
+                        }
+
+                        if (response === undefined) {
+                            console.error('No response from content script - it may not be loaded yet');
+                            showStatus('Content script not ready. Refresh the page and try again.', 'error');
                             generateBtn.disabled = false;
                             generateBtn.textContent = 'Generate AI Reply';
                             return;
                         }
 
                         if (!response || !response.messages) {
-                            showStatus('Failed to scrape conversation. Make sure you\'re on a LinkedIn messaging page.', 'error');
+                            const errorInfo = response && response.error ? ` Error: ${response.error}` : '';
+                            showStatus('Failed to scrape conversation. Make sure you\'re on a LinkedIn messaging page.' + errorInfo, 'error');
                             generateBtn.disabled = false;
                             generateBtn.textContent = 'Generate AI Reply';
                             return;
@@ -280,15 +290,15 @@ document.addEventListener('DOMContentLoaded', () => {
                                     }, (insertResponse) => {
                                         if (chrome.runtime.lastError) {
                                             console.warn('Could not auto-insert reply:', chrome.runtime.lastError);
-                                            showStatus('Reply generated! Copy to clipboard or use the Draft Reply button.', 'success');
+                                            showStatus('Reply generated but could not insert. Manual draft mode available.', 'success');
                                         } else if (insertResponse && insertResponse.success) {
-                                            showStatus('Reply generated and inserted into draft!', 'success');
+                                            showStatus('Reply generated and inserted!', 'success');
                                         } else {
-                                            showStatus('Reply generated! Copy to clipboard or use the Draft Reply button.', 'success');
+                                            showStatus('Reply generated but could not auto-insert.', 'success');
                                         }
                                     });
                                 } else {
-                                    showStatus('Reply generated successfully! Copy to clipboard or use the Draft Reply button.', 'success');
+                                    showStatus('Reply generated successfully!', 'success');
                                 }
                             });
                         } catch (error) {
@@ -309,25 +319,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    /**
-     * Copies the generated reply to clipboard.
-     */
-    function copyReply() {
-        if (!currentReply) return;
-
-        navigator.clipboard.writeText(currentReply).then(() => {
-            showStatus('Copied to clipboard!', 'success');
-        }).catch(() => {
-            showStatus('Failed to copy to clipboard.', 'error');
-        });
-    }
-
     // --- Event Listeners ---
     form.addEventListener('submit', saveConfig);
     testBtn.addEventListener('click', testConnection);
     toggleKeyBtn.addEventListener('click', toggleKeyVisibility);
     generateBtn.addEventListener('click', generateReply);
-    copyBtn.addEventListener('click', copyReply);
     backendUrlInput.addEventListener('blur', loadClients);
 
     // --- Initial Load ---
